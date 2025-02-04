@@ -8,15 +8,8 @@ suffix=$(echo "$searcher" | cut -d '*' -f 2)
 echo "
 Searching for Zig compilers in $searcher"
 
-# Get the current Zig version using the zig version command
 zig_version=$(zig version)
 output_file="./etc/config/zig.local.properties"
-
-# Cleanup function to empty the output file on Ctrl+C
-cleanup() {
-  echo "" > "$output_file"
-  exit 1
-}
 
 echo "compilers=&zig
 group.zig.objdumper=objdump
@@ -31,6 +24,12 @@ group.zig.needsMulti=true
 group.zig.options=-O ReleaseFast
 " > "$output_file"
 
+# Empty the output file on Ctrl+C
+cleanup() {
+  echo "" > "$output_file"
+  exit 1
+}
+
 # Trap the SIGINT signal (Ctrl+C) and call the cleanup function
 trap cleanup SIGINT
 
@@ -39,7 +38,6 @@ version_aliases=()
 default_compiler=""
 default_compiler_version=""
 
-# Loop through all directories that start with zig-v
 for folder in "$prefix"*; do
   if [ -d "$folder" ]; then
     if [[ "$folder" == "$(readlink -f "$folder")" ]]; then
@@ -67,12 +65,8 @@ compiler.$version_alias.name=v$version
 done
 
 sorted_versions=$(echo "${versions[@]}" | tr ' ' '\n' | sort -r)
-
-# Sort the version aliases in lexicographical order
 sorted_version_aliases=$(echo "${version_aliases[@]}" | tr ' ' '\n' | sort -r | tr '\n' ':')
-
-# Remove trailing colon
-sorted_version_aliases="${sorted_version_aliases%:}"
+sorted_version_aliases="${sorted_version_aliases%:}" # Remove trailing colon
 
 # Output the final line with all version aliases
 echo "group.zig.compilers=$sorted_version_aliases" >> "$output_file"
@@ -80,7 +74,6 @@ echo "group.zig.compilers=$sorted_version_aliases" >> "$output_file"
 if [ -n "$default_compiler" ]; then
   echo "defaultCompiler=$default_compiler" >> "$output_file"
 else
-  # Emit the defaultCompiler line (first element of sorted version_aliases)
   default_compiler=$(echo "$sorted_version_aliases" | cut -d':' -f 1)
   default_compiler_version=$(echo "$sorted_versions" | head -n 1)
   echo "defaultCompiler=$default_compiler" >> "$output_file"
