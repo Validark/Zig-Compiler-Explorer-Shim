@@ -1,11 +1,14 @@
 #!/bin/bash
 
 if [ "$1" = "latest" ]; then
-  git fetch origin
-  git reset --hard origin/main
+  git pull origin main
+  # Delete the silly tooltip messages
   sed -i '' "s|const attSyntaxWarning = '\*\*\*WARNING: The information shown pertains to Intel syntax\.\*\*\*';|const attSyntaxWarning = '';|" ./static/panes/compiler.ts
   sed -i '' "s|value: response.tooltip + '\\\\n\\\\nMore information available in the context menu.',|value: response.tooltip,|" ./static/panes/compiler.ts
   make prebuild EXTRA_ARGS='--language zig'
+  # Restore the silly tooltip messages
+  sed -i '' "s|const attSyntaxWarning = '';|const attSyntaxWarning = '\*\*\*WARNING: The information shown pertains to Intel syntax\.\*\*\*';|" ./static/panes/compiler.ts
+  sed -i '' "s|value: response.tooltip,|value: response.tooltip + '\\\\n\\\\nMore information available in the context menu.',|" ./static/panes/compiler.ts
 fi
 
 exe_location=$(readlink -f "$(whereis zig | cut -d ' ' -f 2)")
