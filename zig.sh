@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ "$1" = "latest" ]; then
+  git pull origin main
+  make prebuild EXTRA_ARGS='--language zig'
+fi
+
 exe_location=$(readlink -f "$(whereis zig | cut -d ' ' -f 2)")
 searcher=$(echo "$exe_location" | sed -E 's#[0-9]+\.[0-9]+\.[0-9]+[^/]*#*#')
 prefix=$(echo "$searcher" | cut -d '*' -f 1)
@@ -21,7 +26,7 @@ group.zig.licenseLink=https://github.com/ziglang/zig/blob/master/LICENSE
 group.zig.licenseName=The MIT License (Expat)
 group.zig.licensePreamble=Copyright (c) Zig contributors
 group.zig.needsMulti=true
-group.zig.options=-O ReleaseFast
+group.zig.options=-O ReleaseFast -fomit-frame-pointer -freference-trace=100
 " > "$output_file"
 
 # Empty the output file on Ctrl+C
@@ -49,7 +54,7 @@ for folder in "$prefix"*; do
 
       echo "compiler.$version_alias.exe=$folder$suffix
 compiler.$version_alias.semver=$version
-compiler.$version_alias.name=v$version
+compiler.$version_alias.name=$version
 " >> "$output_file"
 
       versions+=("$version")
@@ -94,8 +99,59 @@ while IFS= read -r sorted_version; do
 done <<< "$sorted_versions"
 
 echo "
-Filled $output_file with $i Zig Compilers
-"
+Filled $output_file with $i Zig Compilers"
+
+tools_list=()
+
+llvm_mca_version=""
+llvm_mca_path=""
+echo -n "Searching for llvm-mca => "
+if command -v llvm-mca >/dev/null 2>&1; then
+  tools_list+=("llvm-mca")
+  llvm_mca_version=$(llvm-mca --version | sed -n 's/.*LLVM version \([0-9.]*\).*/\1/p')
+  llvm_mca_path=$(command -v llvm-mca)
+  echo "found $llvm_mca_path (version $llvm_mca_version)"
+else
+  echo "not found"
+fi
+
+osaca_version=""
+osaca_path=""
+echo -n "Searching for osaca => "
+if command -v osaca >/dev/null 2>&1; then
+  tools_list+=("osaca")
+  osaca_version=$(osaca --version)
+  osaca_path=$(command -v osaca)
+  echo "found $osaca_path (version $osaca_version)"
+else
+  echo "not found"
+fi
+
+echo ""
+echo ""
+
+{
+  if [ ${#tools_list[@]} -gt 0 ]; then
+    printf 'tools=%s\n' "$(IFS=:; echo "${tools_list[*]}")"
+  fi
+
+  if [ -n "$llvm_mca_path" ]; then
+    echo "tools.llvm-mca.name=llvm-mca $llvm_mca_version"
+    echo "tools.llvm-mca.exe=$llvm_mca_path"
+    echo "tools.llvm-mca.type=postcompilation"
+    echo "tools.llvm-mca.class=llvm-mca-tool"
+    echo "tools.llvm-mca.options=-timeline"
+    echo "tools.llvm-mca.stdinHint=disabled"
+  fi
+
+  if [ -n "$osaca_path" ]; then
+    echo "tools.osaca.name=$osaca_version"
+    echo "tools.osaca.exe=$osaca_path"
+    echo "tools.osaca.type=postcompilation"
+    echo "tools.osaca.class=osaca-tool"
+    echo "tools.osaca.stdinHint=disabled"
+  fi
+} >> "$output_file"
 
 # make dev EXTRA_ARGS='--language zig --debug'
 make run-only EXTRA_ARGS='--language zig'
