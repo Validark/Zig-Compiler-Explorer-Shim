@@ -1,7 +1,10 @@
 #!/bin/bash
 
 if [ "$1" = "latest" ]; then
-  git pull origin main
+  git fetch origin
+  git reset --hard origin/main
+  sed -i '' "s|const attSyntaxWarning = '\*\*\*WARNING: The information shown pertains to Intel syntax\.\*\*\*';|const attSyntaxWarning = '';|" ./static/panes/compiler.ts
+  sed -i '' "s|value: response.tooltip + '\\\\n\\\\nMore information available in the context menu.',|value: response.tooltip,|" ./static/panes/compiler.ts
   make prebuild EXTRA_ARGS='--language zig'
 fi
 
