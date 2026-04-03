@@ -3,11 +3,11 @@
 if [ "$1" = "latest" ]; then
   git pull origin main
   # Delete the silly tooltip messages
-  sed -i '' "s|const attSyntaxWarning = '\*\*\*WARNING: The information shown pertains to Intel syntax\.\*\*\*';|const attSyntaxWarning = '';|" ./static/panes/compiler.ts
+  sed -i '' "s|export const ATT_SYNTAX_WARNING = 'WARNING: The information shown pertains to Intel syntax.';|export const ATT_SYNTAX_WARNING = '';|" ./static/assembly-syntax.ts
   sed -i '' "s|value: response.tooltip + '\\\\n\\\\nMore information available in the context menu.',|value: response.tooltip,|" ./static/panes/compiler.ts
   make prebuild EXTRA_ARGS='--language zig'
   # Restore the silly tooltip messages
-  sed -i '' "s|const attSyntaxWarning = '';|const attSyntaxWarning = '\*\*\*WARNING: The information shown pertains to Intel syntax\.\*\*\*';|" ./static/panes/compiler.ts
+  sed -i '' "s|export const ATT_SYNTAX_WARNING = '';|export const ATT_SYNTAX_WARNING = 'WARNING: The information shown pertains to Intel syntax.';|" ./static/assembly-syntax.ts
   sed -i '' "s|value: response.tooltip,|value: response.tooltip + '\\\\n\\\\nMore information available in the context menu.',|" ./static/panes/compiler.ts
 fi
 
@@ -16,8 +16,17 @@ searcher=$(echo "$exe_location" | sed -E 's#[0-9]+\.[0-9]+\.[0-9]+[^/]*#*#')
 prefix=$(echo "$searcher" | cut -d '*' -f 1)
 suffix=$(echo "$searcher" | cut -d '*' -f 2)
 
+# Always search these additional directories
+extra_search_dirs=(
+  "$HOME/.local/opt/"
+  "$HOME/.local/opt/brew/bin/"
+)
+
 echo "
 Searching for Zig compilers in $searcher"
+for dir in "${extra_search_dirs[@]}"; do
+  echo "Also searching in $dir"
+done
 
 zig_version=$(zig version)
 output_file="./etc/config/zig.local.properties"
@@ -48,17 +57,47 @@ versions=()
 version_aliases=()
 default_compiler=""
 default_compiler_version=""
+seen_folders=()
 
+# Collect all candidate folders from the primary search path and extra directories
+candidate_folders=()
 for folder in "$prefix"*; do
+  candidate_folders+=("$folder")
+done
+for dir in "${extra_search_dirs[@]}"; do
+  if [ -d "$dir" ]; then
+    for folder in "$dir"*; do
+      candidate_folders+=("$folder")
+    done
+  fi
+done
+
+for folder in "${candidate_folders[@]}"; do
   if [ -d "$folder" ]; then
-    if [[ "$folder" == "$(readlink -f "$folder")" ]]; then
-      version=${folder#"$prefix"}  # Remove prefix
-      version=${version%"$suffix"}      # Remove suffix
+    resolved=$(readlink -f "$folder")
+    if [[ "$folder" == "$resolved" ]]; then
+      # Try to find the zig executable and extract version
+      if [[ -n "$suffix" && -x "$folder$suffix" ]]; then
+        exe_path="$folder$suffix"
+      elif [ -x "$folder/zig" ]; then
+        exe_path="$folder/zig"
+      else
+        continue
+      fi
+
+      # Extract version by running the binary
+      version=$("$exe_path" version 2>/dev/null) || continue
+      [[ -z "$version" ]] && continue
+
+      # Skip duplicates
+      if printf '%s\n' "${versions[@]}" | grep -qxF "$version"; then
+        continue
+      fi
 
       # Generate version_alias by replacing . and + with -
       version_alias=${version//[.+]/-}
 
-      echo "compiler.$version_alias.exe=$folder$suffix
+      echo "compiler.$version_alias.exe=$exe_path
 compiler.$version_alias.semver=$version
 compiler.$version_alias.name=$version
 " >> "$output_file"
@@ -116,6 +155,11 @@ if command -v llvm-mca >/dev/null 2>&1; then
   tools_list+=("llvm-mca")
   llvm_mca_version=$(llvm-mca --version | sed -n 's/.*LLVM version \([0-9.]*\).*/\1/p')
   llvm_mca_path=$(command -v llvm-mca)
+  echo "found $llvm_mca_path (version $llvm_mca_version)"
+elif brew_llvm_prefix=$(brew --prefix llvm 2>/dev/null) && [ -x "$brew_llvm_prefix/bin/llvm-mca" ]; then
+  tools_list+=("llvm-mca")
+  llvm_mca_path="$brew_llvm_prefix/bin/llvm-mca"
+  llvm_mca_version=$("$llvm_mca_path" --version | sed -n 's/.*LLVM version \([0-9.]*\).*/\1/p')
   echo "found $llvm_mca_path (version $llvm_mca_version)"
 else
   echo "not found"
